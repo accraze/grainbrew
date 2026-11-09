@@ -10,6 +10,9 @@ pub const POOL_SIZE: usize = 512;
 const WINDOW_SIZE: usize = 1024;
 /// Rate deviation at full Spread
 const SPREAD_SEMITONES: f32 = 12.0;
+/// Furthest back a grain can start at full Spread, in grain sizes. Without this, grains at near-unity
+/// rate line up and rebuild the dry signal.
+const SCATTER_SIZES: f32 = 4.0;
 /// Oldest-to-newest room the Hermite taps need, plus one sample for rounding
 const READ_MARGIN: f32 = 3.0;
 
@@ -80,7 +83,8 @@ impl GrainPool {
         let duration = s.size_samples / rate;
 
         // A grain faster than 1x gains on the input, so it starts far enough back to never pass it
-        g.read_pos = newest - ((rate - 1.0) * duration).max(0.0) as f64 - READ_MARGIN as f64;
+        let scatter = s.spread * SCATTER_SIZES * s.size_samples * 0.5 * (g.rng.bipolar() + 1.0);
+        g.read_pos = newest - (((rate - 1.0) * duration).max(0.0) + READ_MARGIN + scatter) as f64;
         g.rate = rate;
         g.window_phase = 0.0;
         g.window_inc = 1.0 / duration as f64;

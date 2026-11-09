@@ -45,6 +45,17 @@ fn level_db(input: &[f32], output: &[[f32; 2]]) -> f32 {
     20.0 * (rms(wet) / rms(dry)).log10()
 }
 
+/// Level-independent similarity to the input, lined up with the grains' minimum read offset.
+fn correlation_with_dry(output: &[[f32; 2]], input: &[f32]) -> f32 {
+    let (mut wet_dry, mut wet, mut dry) = (0.0, 0.0, 0.0);
+    for i in STEADY {
+        wet_dry += output[i][0] * input[i - 3];
+        wet += output[i][0] * output[i][0];
+        dry += input[i - 3] * input[i - 3];
+    }
+    wet_dry / (wet * dry).sqrt()
+}
+
 fn assert_finite(output: &[[f32; 2]]) {
     for (i, s) in output.iter().flatten().enumerate() {
         assert!(s.is_finite(), "sample {i} is {s}");
@@ -102,8 +113,15 @@ fn level_is_sane_across_density() {
                     )
                 });
                 println!("timbre {timbre_semitones} spread {spread}: {levels:.1?} dB");
+                // Square-root gain assumes out-of-phase grains. With no timbre or spread they line
+                // up and sum hotter, and the saturator holds that in check.
+                let ceiling = if timbre_semitones == 0.0 && spread == 0.0 {
+                    9.0
+                } else {
+                    3.0
+                };
                 for level in levels {
-                    assert!((-24.0..=3.0).contains(&level), "{levels:?}");
+                    assert!((-24.0..=ceiling).contains(&level), "{levels:?}");
                 }
             }
         }
@@ -159,18 +177,16 @@ fn timbre_resamples_grains() {
 #[test]
 fn spread_colours_the_sound_at_zero_timbre() {
     let input = sine(440.0);
-    let difference = |spread| {
-        let output = render(
-            &input,
-            Controls {
-                spread,
-                ..Controls::default()
-            },
-        );
-        rms(STEADY.map(|i| output[i][0] - input[i]))
+    let similarity = |spread| {
+        let controls = Controls {
+            spread,
+            ..Controls::default()
+        };
+        correlation_with_dry(&render(&input, controls), &input)
     };
-    let (plain, spread) = (difference(0.0), difference(0.5));
-    assert!(spread > 2.0 * plain, "{plain} vs {spread}");
+    let (plain, spread) = (similarity(0.0), similarity(0.5));
+    println!("correlation: plain {plain}, spread {spread}");
+    assert!(plain > 0.9 && spread.abs() < 0.5, "{plain} vs {spread}");
 }
 
 #[test]
@@ -218,4 +234,21 @@ fn silence_decays_to_zero_without_denormals() {
         assert!(last.iter().all(|s| *s == 0.0 || s.is_normal()));
     }
     assert_eq!(last, [0.0; 2]);
+}
+
+/// At zero latency and near-unity rate, grains can line up and rebuild the input. Low notes show it
+/// most, because the read offsets are small next to the period.
+#[test]
+fn defaults_do_not_just_copy_a_bass_note() {
+    let input: Vec<f32> = (0..LEN)
+        .map(|i| {
+            let t = TAU * 82.0 * i as f32 / FS;
+            (1..=12)
+                .map(|h| (t * h as f32).sin() / h as f32)
+                .sum::<f32>()
+                * 0.35
+        })
+        .collect();
+    let correlation = correlation_with_dry(&render(&input, Controls::default()), &input);
+    assert!(correlation.abs() < 0.3, "correlation {correlation}");
 }

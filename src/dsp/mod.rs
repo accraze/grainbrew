@@ -15,8 +15,8 @@ use scheduler::Scheduler;
 
 const PRE_HIGHPASS_HZ: f32 = 40.0;
 const SCHEDULER_SEED: u32 = 0x4752_4149;
-/// A Hann window averages 0.5, so N overlapping in-phase grains sum to N/2
-const HANN_MEAN: f32 = 0.5;
+/// Mean square of a Hann window. N out-of-phase grains sum in power to N * 3/8.
+const HANN_POWER: f32 = 0.375;
 
 #[derive(Clone, Copy)]
 pub struct Controls {
@@ -36,9 +36,9 @@ impl Default for Controls {
     fn default() -> Self {
         Self {
             timbre_semitones: 0.0,
-            spread: 0.15,
-            density: 100.0,
-            grain_size_ms: 20.0,
+            spread: 0.3,
+            density: 150.0,
+            grain_size_ms: 40.0,
             tone: 0.0,
             drive: 0.0,
             mix: 1.0,
@@ -118,7 +118,7 @@ impl Engine {
                     spread: c.spread,
                     size_samples,
                     // Floored so sparse grains play at input level instead of being boosted
-                    gain: 1.0 / (overlap * HANN_MEAN).max(1.0),
+                    gain: 1.0 / (overlap * HANN_POWER).max(1.0).sqrt(),
                 },
             );
         }

@@ -10,7 +10,7 @@ and the plugin reports 0 samples of latency.
 | Control | Range         | What it does                                                        |
 |---------|---------------|---------------------------------------------------------------------|
 | Timbre  | -24 to +24 st | Resampling rate of each grain                                       |
-| Spread  | 0–100%        | Per-grain random pitch (up to ±12 st), pan and polarity             |
+| Spread  | 0–100%        | Per-grain random pitch (up to ±12 st), read offset, pan, polarity   |
 | Density | 5–500 /s      | Grains started per second, with jittered spacing                    |
 | Size    | 2–50 ms       | Grain length before resampling                                      |
 | Tone    | -1 to 1       | Tilt EQ on the grains around 1 kHz, ±6 dB                           |
