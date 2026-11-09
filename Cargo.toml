@@ -1,0 +1,25 @@
+[package]
+name = "grainbrew"
+version = "0.1.0"
+edition = "2021"
+description = "Zero-latency time-domain granular timbre shifter"
+license = "GPL-3.0-or-later"
+
+[workspace]
+members = ["xtask"]
+
+[lib]
+# `lib` lets tests/ link against the DSP
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = ["assert_process_allocs"] }
+nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+
+[dev-dependencies]
+# Must be the same fork nih_plug uses, so the test shares the state of its allocator
+assert_no_alloc = { git = "https://github.com/robbert-vdh/rust-assert-no-alloc.git", branch = "feature/nested-permit-forbid" }
+
+[profile.release]
+lto = "thin"
+strip = "symbols"
