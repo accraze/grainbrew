@@ -1,9 +1,11 @@
 use dsp::{Controls, Engine};
 use nih_plug::prelude::*;
+use nih_plug_egui::EguiState;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
 pub mod dsp;
+mod editor;
 
 struct Grainbrew {
     params: Arc<GrainbrewParams>,
@@ -13,7 +15,9 @@ struct Grainbrew {
 // Timbre, Spread, Density and Grain Size are unsmoothed: they're only read when a grain starts, and
 // each grain keeps its own settings, so a step in them can't click.
 #[derive(Params)]
-struct GrainbrewParams {
+pub struct GrainbrewParams {
+    #[persist = "editor-state"]
+    editor_state: Arc<EguiState>,
     #[id = "timbre"]
     timbre: FloatParam,
     #[id = "spread"]
@@ -43,6 +47,7 @@ impl Default for GrainbrewParams {
     fn default() -> Self {
         let defaults = Controls::default();
         Self {
+            editor_state: EguiState::from_size(editor::WIDTH, editor::HEIGHT),
             timbre: FloatParam::new(
                 "Timbre",
                 defaults.timbre_semitones,
@@ -143,6 +148,10 @@ impl Plugin for Grainbrew {
         self.params.clone()
     }
 
+    fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
+        editor::create(self.params.clone())
+    }
+
     fn initialize(
         &mut self,
         _audio_io_layout: &AudioIOLayout,
@@ -222,3 +231,32 @@ impl Vst3Plugin for Grainbrew {
 
 nih_export_clap!(Grainbrew);
 nih_export_vst3!(Grainbrew);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Hosts type values back in as text, and CLAP validators check that this is stable.
+    #[test]
+    fn param_text_round_trips() {
+        let p = GrainbrewParams::default();
+        for param in [
+            &p.timbre,
+            &p.spread,
+            &p.density,
+            &p.grain_size,
+            &p.tone,
+            &p.drive,
+            &p.mix,
+            &p.output,
+        ] {
+            for i in 0..=100 {
+                let text = param.normalized_value_to_string(i as f32 / 100.0, true);
+                let back = param
+                    .string_to_normalized_value(&text)
+                    .unwrap_or_else(|| panic!("{}: can't parse {text}", param.name()));
+                assert_eq!(text, param.normalized_value_to_string(back, true));
+            }
+        }
+    }
+}
