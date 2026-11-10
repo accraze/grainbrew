@@ -14,6 +14,8 @@ use saturator::Saturator;
 use scheduler::Scheduler;
 
 const PRE_HIGHPASS_HZ: f32 = 40.0;
+/// Keeps Freeze a cloud at zero Scatter, instead of every grain replaying the same slice
+const FREEZE_MIN_SCATTER_MS: f32 = 50.0;
 const SCHEDULER_SEED: u32 = 0x4752_4149;
 /// Mean square of a Hann window. N out-of-phase grains sum in power to N * 3/8.
 const HANN_POWER: f32 = 0.375;
@@ -22,6 +24,8 @@ const HANN_POWER: f32 = 0.375;
 pub struct Controls {
     pub timbre_semitones: f32,
     pub spread: f32,
+    /// How much further back grains may start
+    pub scatter_ms: f32,
     /// Grains per second
     pub density: f32,
     pub grain_size_ms: f32,
@@ -30,6 +34,8 @@ pub struct Controls {
     pub mix: f32,
     /// Linear
     pub output_gain: f32,
+    /// Stops recording input, so grains keep reading what's held
+    pub freeze: bool,
 }
 
 impl Default for Controls {
@@ -37,12 +43,14 @@ impl Default for Controls {
         Self {
             timbre_semitones: 0.0,
             spread: 0.3,
+            scatter_ms: 50.0,
             density: 150.0,
             grain_size_ms: 40.0,
             tone: 0.0,
             drive: 0.0,
             mix: 1.0,
             output_gain: 1.0,
+            freeze: false,
         }
     }
 }
@@ -103,11 +111,19 @@ impl Engine {
         let dry = input.map(|x| if x.is_finite() { flush(x) } else { 0.0 });
 
         for ((ring, pre), x) in self.rings.iter_mut().zip(&mut self.pre).zip(dry) {
-            ring.push(pre.process(x));
+            let filtered = pre.process(x);
+            if !c.freeze {
+                ring.push(filtered);
+            }
         }
 
         if self.scheduler.tick(c.density / self.sample_rate) {
             let size_samples = c.grain_size_ms * 0.001 * self.sample_rate;
+            let scatter_ms = if c.freeze {
+                c.scatter_ms.max(FREEZE_MIN_SCATTER_MS)
+            } else {
+                c.scatter_ms
+            };
             // Real output duration is size / rate, since grains aren't duration-compensated
             let overlap =
                 c.density * c.grain_size_ms * 0.001 / 2f32.powf(c.timbre_semitones / 12.0);
@@ -117,13 +133,15 @@ impl Engine {
                     timbre_semitones: c.timbre_semitones,
                     spread: c.spread,
                     size_samples,
+                    scatter_samples: scatter_ms * 0.001 * self.sample_rate,
+                    frozen: c.freeze,
                     // Floored so sparse grains play at input level instead of being boosted
                     gain: 1.0 / (overlap * HANN_POWER).max(1.0).sqrt(),
                 },
             );
         }
 
-        let wet = self.grains.process(&self.rings);
+        let wet = self.grains.process(&self.rings, c.freeze);
 
         let mut out = [0.0; 2];
         for ch in 0..2 {

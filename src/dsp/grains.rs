@@ -10,9 +10,6 @@ pub const POOL_SIZE: usize = 512;
 const WINDOW_SIZE: usize = 1024;
 /// Rate deviation at full Spread
 const SPREAD_SEMITONES: f32 = 12.0;
-/// Furthest back a grain can start at full Spread, in grain sizes. Without this, grains at near-unity
-/// rate line up and rebuild the dry signal.
-const SCATTER_SIZES: f32 = 4.0;
 /// Oldest-to-newest room the Hermite taps need, plus one sample for rounding
 const READ_MARGIN: f32 = 3.0;
 
@@ -35,6 +32,10 @@ pub struct Spawn {
     pub timbre_semitones: f32,
     pub spread: f32,
     pub size_samples: f32,
+    /// Grains start up to this far further back. Without it, grains at near-unity rate line up and
+    /// rebuild the dry signal.
+    pub scatter_samples: f32,
+    pub frozen: bool,
     pub gain: f32,
 }
 
@@ -82,9 +83,15 @@ impl GrainPool {
         // No duration compensation: the source span is fixed, so a faster grain is a shorter one
         let duration = s.size_samples / rate;
 
-        // A grain faster than 1x gains on the input, so it starts far enough back to never pass it
-        let scatter = s.spread * SCATTER_SIZES * s.size_samples * 0.5 * (g.rng.bipolar() + 1.0);
-        g.read_pos = newest - (((rate - 1.0) * duration).max(0.0) + READ_MARGIN + scatter) as f64;
+        // A grain must never read past the input. Faster than 1x it gains on live input, and with
+        // the input frozen it has to fit its whole source span into what's held.
+        let lead = if s.frozen {
+            s.size_samples
+        } else {
+            ((rate - 1.0) * duration).max(0.0)
+        };
+        let scatter = s.scatter_samples * 0.5 * (g.rng.bipolar() + 1.0);
+        g.read_pos = newest - (lead + READ_MARGIN + scatter) as f64;
         g.rate = rate;
         g.window_phase = 0.0;
         g.window_inc = 1.0 / duration as f64;
@@ -103,7 +110,8 @@ impl GrainPool {
     }
 
     /// Advances every live grain one sample and returns their sum.
-    pub fn process(&mut self, rings: &[InputRing; 2]) -> [f32; 2] {
+    pub fn process(&mut self, rings: &[InputRing; 2], frozen: bool) -> [f32; 2] {
+        let newest = rings[0].newest();
         let mut out = [0.0; 2];
         let mut i = 0;
         while i < self.active {
@@ -113,6 +121,12 @@ impl GrainPool {
                 continue;
             }
             let g = &mut self.grains[i];
+            // A fast grain already playing when Freeze hits runs out of input. It parks for good,
+            // since releasing Freeze wouldn't give it its lead back.
+            if frozen && g.read_pos > newest - 2.0 {
+                g.read_pos = newest - 2.0;
+                g.rate = 0.0;
+            }
             // Stay in f64: a phase just under 1 rounds to 1 in f32 and would index past the table
             let index = g.window_phase * WINDOW_SIZE as f64;
             let whole = index as usize;

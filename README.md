@@ -10,13 +10,18 @@ and the plugin reports 0 samples of latency.
 | Control | Range         | What it does                                                        |
 |---------|---------------|---------------------------------------------------------------------|
 | Timbre  | -24 to +24 st | Resampling rate of each grain                                       |
-| Spread  | 0–100%        | Per-grain random pitch (up to ±12 st), read offset, pan, polarity   |
+| Spread  | 0–100%        | Per-grain random pitch (up to ±12 st), pan and polarity             |
+| Scatter | 0–250 ms      | How much further back in the input each grain can start             |
 | Density | 5–500 /s      | Grains started per second, with jittered spacing                    |
 | Size    | 2–50 ms       | Grain length before resampling                                      |
 | Tone    | -1 to 1       | Tilt EQ on the grains around 1 kHz, ±6 dB                           |
 | Drive   | 0–100%        | Soft-clip saturation on the grains                                  |
 | Mix     | 0–100%        | Dry/wet                                                             |
 | Output  | -24 to +12 dB | Final level                                                         |
+| Freeze  | on / off      | Stops recording, so the cloud keeps playing what's held             |
+
+While frozen, the dry signal still follows Mix, so you can play over the held cloud. Longer Scatter
+gives grains more of the held audio to draw from.
 
 Knobs: drag or scroll to turn, hold Shift for fine control, double-click to reset.
 

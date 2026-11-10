@@ -4,11 +4,13 @@
 use crate::GrainbrewParams;
 use nih_plug::prelude::*;
 use nih_plug_egui::create_egui_editor;
-use nih_plug_egui::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Ui, Vec2};
+use nih_plug_egui::egui::{
+    self, Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2,
+};
 use std::f32::consts::{PI, TAU};
 use std::sync::Arc;
 
-pub const WIDTH: u32 = 440;
+pub const WIDTH: u32 = 550;
 pub const HEIGHT: u32 = 270;
 
 const KNOB_RADIUS: f32 = 26.0;
@@ -26,6 +28,7 @@ pub fn create(params: Arc<GrainbrewParams>) -> Option<Box<dyn Editor>> {
                 let knobs = [
                     &params.timbre,
                     &params.spread,
+                    &params.scatter,
                     &params.density,
                     &params.grain_size,
                     &params.tone,
@@ -33,14 +36,56 @@ pub fn create(params: Arc<GrainbrewParams>) -> Option<Box<dyn Editor>> {
                     &params.mix,
                     &params.output,
                 ];
-                for (i, param) in knobs.into_iter().enumerate() {
-                    let x = WIDTH as f32 * ((i % 4) as f32 + 0.5) / 4.0;
-                    let y = 75.0 + 125.0 * (i / 4) as f32;
-                    knob(ui, setter, param, Pos2::new(x, y));
+                // The real width, because a saved project restores the window size it was saved at
+                let width = ctx.screen_rect().width();
+                let cell = |i: usize| {
+                    Pos2::new(
+                        width * ((i % 5) as f32 + 0.5) / 5.0,
+                        75.0 + 125.0 * (i / 5) as f32,
+                    )
+                };
+                for (i, param) in knobs.iter().enumerate() {
+                    knob(ui, setter, param, cell(i));
                 }
+                toggle(ui, setter, &params.freeze, cell(knobs.len()));
             });
         },
     )
+}
+
+fn toggle(ui: &Ui, setter: &ParamSetter, param: &BoolParam, center: Pos2) {
+    let rect = Rect::from_center_size(center, Vec2::new(72.0, 40.0));
+    let response = ui.interact(rect, ui.id().with(param.name()), Sense::click());
+    if response.clicked() {
+        setter.begin_set_parameter(param);
+        setter.set_parameter(param, !param.value());
+        setter.end_set_parameter(param);
+    }
+
+    let on = param.value();
+    let p = ui.painter();
+    p.rect_filled(
+        rect,
+        6.0,
+        if on {
+            Color32::from_rgb(120, 190, 235)
+        } else {
+            Color32::from_gray(26)
+        },
+    );
+    p.rect_stroke(
+        rect,
+        6.0,
+        Stroke::new(1.0_f32, Color32::from_gray(90)),
+        StrokeKind::Outside,
+    );
+    p.text(
+        center,
+        Align2::CENTER_CENTER,
+        param.name().to_uppercase(),
+        FontId::proportional(13.0),
+        if on { Color32::from_gray(10) } else { WHITE },
+    );
 }
 
 /// Unit vector for a knob angle, measured clockwise from straight up.

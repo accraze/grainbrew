@@ -12,7 +12,7 @@ struct Grainbrew {
     engine: Engine,
 }
 
-// Timbre, Spread, Density and Grain Size are unsmoothed: they're only read when a grain starts, and
+// Timbre, Spread, Scatter, Density and Grain Size are unsmoothed: they're only read when a grain starts, and
 // each grain keeps its own settings, so a step in them can't click.
 #[derive(Params)]
 pub struct GrainbrewParams {
@@ -22,6 +22,8 @@ pub struct GrainbrewParams {
     timbre: FloatParam,
     #[id = "spread"]
     spread: FloatParam,
+    #[id = "scatter"]
+    scatter: FloatParam,
     #[id = "density"]
     density: FloatParam,
     #[id = "size"]
@@ -34,6 +36,8 @@ pub struct GrainbrewParams {
     mix: FloatParam,
     #[id = "output"]
     output: FloatParam,
+    #[id = "freeze"]
+    freeze: BoolParam,
 }
 
 fn percent(name: &str, default: f32) -> FloatParam {
@@ -59,6 +63,17 @@ impl Default for GrainbrewParams {
             .with_unit(" st")
             .with_value_to_string(formatters::v2s_f32_rounded(1)),
             spread: percent("Spread", defaults.spread),
+            scatter: FloatParam::new(
+                "Scatter",
+                defaults.scatter_ms,
+                FloatRange::Skewed {
+                    min: 0.0,
+                    max: 250.0,
+                    factor: FloatRange::skew_factor(-1.0),
+                },
+            )
+            .with_unit(" ms")
+            .with_value_to_string(formatters::v2s_f32_rounded(0)),
             density: FloatParam::new(
                 "Density",
                 defaults.density,
@@ -106,6 +121,7 @@ impl Default for GrainbrewParams {
             .with_unit(" dB")
             .with_value_to_string(formatters::v2s_f32_gain_to_db(1))
             .with_string_to_value(formatters::s2v_f32_gain_to_db()),
+            freeze: BoolParam::new("Freeze", defaults.freeze),
         }
     }
 }
@@ -179,12 +195,14 @@ impl Plugin for Grainbrew {
             let controls = Controls {
                 timbre_semitones: p.timbre.value(),
                 spread: p.spread.value(),
+                scatter_ms: p.scatter.value(),
                 density: p.density.value(),
                 grain_size_ms: p.grain_size.value(),
                 tone: p.tone.smoothed.next(),
                 drive: p.drive.smoothed.next(),
                 mix: p.mix.smoothed.next(),
                 output_gain: p.output.smoothed.next(),
+                freeze: p.freeze.value(),
             };
 
             // Mono runs through the stereo engine with both sides the same
@@ -243,6 +261,7 @@ mod tests {
         for param in [
             &p.timbre,
             &p.spread,
+            &p.scatter,
             &p.density,
             &p.grain_size,
             &p.tone,

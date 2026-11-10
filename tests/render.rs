@@ -73,12 +73,14 @@ fn stays_finite_at_extremes() {
         for timbre_semitones in [-24.0, 0.0, 24.0] {
             for spread in [0.0, 1.0] {
                 for (density, grain_size_ms) in [(5.0, 2.0), (500.0, 2.0), (500.0, 50.0)] {
+                    let scatter_ms = 250.0;
                     for (tone, drive) in [(-1.0, 0.0), (1.0, 1.0)] {
                         assert_finite(&render(
                             &input,
                             Controls {
                                 timbre_semitones,
                                 spread,
+                                scatter_ms,
                                 density,
                                 grain_size_ms,
                                 tone,
@@ -96,7 +98,8 @@ fn stays_finite_at_extremes() {
 #[test]
 fn level_is_sane_across_density() {
     for input in signals() {
-        for timbre_semitones in [-12.0, 0.0, 12.0] {
+        for (timbre_semitones, scatter_ms) in [(-12.0, 50.0), (0.0, 50.0), (12.0, 50.0), (0.0, 0.0)]
+        {
             for spread in [0.0, 0.15, 1.0] {
                 let levels = [5.0, 20.0, 50.0, 100.0, 200.0, 500.0].map(|density| {
                     level_db(
@@ -107,15 +110,18 @@ fn level_is_sane_across_density() {
                                 timbre_semitones,
                                 density,
                                 spread,
+                                scatter_ms,
                                 ..Controls::default()
                             },
                         ),
                     )
                 });
-                println!("timbre {timbre_semitones} spread {spread}: {levels:.1?} dB");
-                // Square-root gain assumes out-of-phase grains. With no timbre or spread they line
+                println!(
+                    "timbre {timbre_semitones} scatter {scatter_ms} spread {spread}: {levels:.1?} dB"
+                );
+                // Square-root gain assumes out-of-phase grains. With no timbre or scatter they line
                 // up and sum hotter, and the saturator holds that in check.
-                let ceiling = if timbre_semitones == 0.0 && spread == 0.0 {
+                let ceiling = if timbre_semitones == 0.0 && scatter_ms == 0.0 {
                     9.0
                 } else {
                     3.0
@@ -132,15 +138,17 @@ fn level_is_sane_across_density() {
 fn process_path_does_not_allocate() {
     for input in signals() {
         let mut engine = Engine::new(FS);
-        let controls = Controls {
+        let mut controls = Controls {
             timbre_semitones: -24.0,
             spread: 1.0,
+            scatter_ms: 250.0,
             density: 500.0,
             grain_size_ms: 50.0,
             ..Controls::default()
         };
         assert_no_alloc(|| {
-            for &x in &input {
+            for (i, &x) in input.iter().enumerate() {
+                controls.freeze = i / 4800 % 2 == 1;
                 std::hint::black_box(engine.process([x, x], &controls));
             }
             engine.reset();
@@ -180,6 +188,7 @@ fn spread_colours_the_sound_at_zero_timbre() {
     let similarity = |spread| {
         let controls = Controls {
             spread,
+            scatter_ms: 0.0,
             ..Controls::default()
         };
         correlation_with_dry(&render(&input, controls), &input)
@@ -251,4 +260,62 @@ fn defaults_do_not_just_copy_a_bass_note() {
         .collect();
     let correlation = correlation_with_dry(&render(&input, Controls::default()), &input);
     assert!(correlation.abs() < 0.3, "correlation {correlation}");
+}
+
+#[test]
+fn freeze_ignores_new_input_and_keeps_sounding() {
+    let frozen = |during_freeze: fn(usize) -> f32| {
+        let mut engine = Engine::new(FS);
+        let mut controls = Controls::default();
+        for s in sine(440.0) {
+            engine.process([s, s], &controls);
+        }
+        controls.freeze = true;
+        (0..LEN)
+            .map(|i| {
+                let x = during_freeze(i);
+                engine.process([x, x], &controls)
+            })
+            .collect::<Vec<_>>()
+    };
+    let silent = frozen(|_| 0.0);
+    let loud = frozen(|i| (i as f32 * 0.3).sin());
+    for (a, b) in silent.iter().flatten().zip(loud.iter().flatten()) {
+        assert!((a - b).abs() < 1e-4, "{a} vs {b}");
+    }
+    let tail = rms(silent[LEN - 24000..].iter().flatten().copied());
+    assert!(tail > 0.1, "frozen cloud faded to {tail}");
+}
+
+/// Toggling Freeze strands grains mid-flight, the hard case for the ring's "no future reads" asserts.
+#[test]
+fn freeze_toggling_stays_in_bounds_and_releases_to_silence() {
+    for timbre_semitones in [-24.0, 24.0] {
+        for spread in [0.0, 1.0] {
+            for scatter_ms in [0.0, 250.0] {
+                for grain_size_ms in [2.0, 50.0] {
+                    let mut engine = Engine::new(FS);
+                    let mut controls = Controls {
+                        timbre_semitones,
+                        spread,
+                        scatter_ms,
+                        grain_size_ms,
+                        density: 500.0,
+                        ..Controls::default()
+                    };
+                    for (i, s) in sine(440.0).into_iter().enumerate() {
+                        controls.freeze = i / 1500 % 2 == 1;
+                        let out = engine.process([s, s], &controls);
+                        assert!(out[0].is_finite() && out[1].is_finite());
+                    }
+                    controls.freeze = false;
+                    let mut last = [1.0; 2];
+                    for _ in 0..96000 {
+                        last = engine.process([0.0; 2], &controls);
+                    }
+                    assert_eq!(last, [0.0; 2]);
+                }
+            }
+        }
+    }
 }
