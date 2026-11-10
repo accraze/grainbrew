@@ -1,5 +1,7 @@
 # Grainbrew
 
+[![CI](https://github.com/accraze/grainbrew/actions/workflows/ci.yml/badge.svg)](https://github.com/accraze/grainbrew/actions/workflows/ci.yml)
+
 A zero-latency, time-domain granular timbre shifter (VST3 / CLAP), built with
 [nih-plug](https://github.com/robbert-vdh/nih-plug).
 
@@ -19,6 +21,7 @@ and the plugin reports 0 samples of latency.
 | Mix     | 0–100%        | Dry/wet                                                             |
 | Output  | -24 to +12 dB | Final level                                                         |
 | Freeze  | on / off      | Stops recording, so the cloud keeps playing what's held             |
+| Bypass  | on / off      | Click-free crossfade to the untouched input                         |
 
 While frozen, the dry signal still follows Mix, so you can play over the held cloud. Longer Scatter
 gives grains more of the held audio to draw from.

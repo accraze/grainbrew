@@ -319,3 +319,21 @@ fn freeze_toggling_stays_in_bounds_and_releases_to_silence() {
         }
     }
 }
+
+#[test]
+fn bypass_fades_to_the_exact_input() {
+    let input = noise_burst();
+    let output = render(
+        &input,
+        Controls {
+            bypass: true,
+            drive: 1.0,
+            output_gain: 0.5,
+            ..Controls::default()
+        },
+    );
+    let fade = (FS * 0.01) as usize + 2;
+    for (dry, out) in input[fade..].iter().zip(&output[fade..]) {
+        assert_eq!([*dry; 2], *out);
+    }
+}

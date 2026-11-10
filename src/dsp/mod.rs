@@ -16,6 +16,7 @@ use scheduler::Scheduler;
 const PRE_HIGHPASS_HZ: f32 = 40.0;
 /// Keeps Freeze a cloud at zero Scatter, instead of every grain replaying the same slice
 const FREEZE_MIN_SCATTER_MS: f32 = 50.0;
+const BYPASS_FADE_SECONDS: f32 = 0.01;
 const SCHEDULER_SEED: u32 = 0x4752_4149;
 /// Mean square of a Hann window. N out-of-phase grains sum in power to N * 3/8.
 const HANN_POWER: f32 = 0.375;
@@ -36,6 +37,8 @@ pub struct Controls {
     pub output_gain: f32,
     /// Stops recording input, so grains keep reading what's held
     pub freeze: bool,
+    /// Crossfades to the untouched input. The engine keeps running underneath.
+    pub bypass: bool,
 }
 
 impl Default for Controls {
@@ -51,6 +54,7 @@ impl Default for Controls {
             mix: 1.0,
             output_gain: 1.0,
             freeze: false,
+            bypass: false,
         }
     }
 }
@@ -75,6 +79,8 @@ pub struct Engine {
     scheduler: Scheduler,
     grains: GrainPool,
     post: [Post; 2],
+    /// 1 when the effect is fully in, 0 when bypassed
+    engaged: f32,
 }
 
 impl Engine {
@@ -90,6 +96,7 @@ impl Engine {
                 tilt: Tilt::new(sample_rate),
                 saturator: Saturator::default(),
             }; 2],
+            engaged: 1.0,
         }
     }
 
@@ -143,13 +150,18 @@ impl Engine {
 
         let wet = self.grains.process(&self.rings, c.freeze);
 
+        let target = if c.bypass { 0.0 } else { 1.0 };
+        let fade_step = 1.0 / (BYPASS_FADE_SECONDS * self.sample_rate);
+        self.engaged += (target - self.engaged).clamp(-fade_step, fade_step);
+
         let mut out = [0.0; 2];
         for ch in 0..2 {
             let post = &mut self.post[ch];
             post.tilt.set_tone(c.tone);
             post.saturator.set_drive(c.drive);
             let shaped = post.process(wet[ch]);
-            out[ch] = flush((dry[ch] + (shaped - dry[ch]) * c.mix) * c.output_gain);
+            let processed = (dry[ch] + (shaped - dry[ch]) * c.mix) * c.output_gain;
+            out[ch] = flush(dry[ch] + (processed - dry[ch]) * self.engaged);
         }
         out
     }

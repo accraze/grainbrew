@@ -47,14 +47,16 @@ pub fn create(params: Arc<GrainbrewParams>) -> Option<Box<dyn Editor>> {
                 for (i, param) in knobs.iter().enumerate() {
                     knob(ui, setter, param, cell(i));
                 }
-                toggle(ui, setter, &params.freeze, cell(knobs.len()));
+                let toggles = cell(knobs.len());
+                toggle(ui, setter, &params.freeze, toggles - Vec2::new(0.0, 23.0));
+                toggle(ui, setter, &params.bypass, toggles + Vec2::new(0.0, 23.0));
             });
         },
     )
 }
 
 fn toggle(ui: &Ui, setter: &ParamSetter, param: &BoolParam, center: Pos2) {
-    let rect = Rect::from_center_size(center, Vec2::new(72.0, 40.0));
+    let rect = Rect::from_center_size(center, Vec2::new(72.0, 36.0));
     let response = ui.interact(rect, ui.id().with(param.name()), Sense::click());
     if response.clicked() {
         setter.begin_set_parameter(param);

@@ -38,6 +38,8 @@ pub struct GrainbrewParams {
     output: FloatParam,
     #[id = "freeze"]
     freeze: BoolParam,
+    #[id = "bypass"]
+    bypass: BoolParam,
 }
 
 fn percent(name: &str, default: f32) -> FloatParam {
@@ -122,6 +124,7 @@ impl Default for GrainbrewParams {
             .with_value_to_string(formatters::v2s_f32_gain_to_db(1))
             .with_string_to_value(formatters::s2v_f32_gain_to_db()),
             freeze: BoolParam::new("Freeze", defaults.freeze),
+            bypass: BoolParam::new("Bypass", defaults.bypass).make_bypass(),
         }
     }
 }
@@ -203,6 +206,7 @@ impl Plugin for Grainbrew {
                 mix: p.mix.smoothed.next(),
                 output_gain: p.output.smoothed.next(),
                 freeze: p.freeze.value(),
+                bypass: p.bypass.value(),
             };
 
             // Mono runs through the stereo engine with both sides the same
