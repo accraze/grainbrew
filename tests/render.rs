@@ -74,7 +74,7 @@ fn stays_finite_at_extremes() {
             for spread in [0.0, 1.0] {
                 for (density, grain_size_ms) in [(5.0, 2.0), (500.0, 2.0), (500.0, 50.0)] {
                     let scatter_ms = 250.0;
-                    for (tone, drive) in [(-1.0, 0.0), (1.0, 1.0)] {
+                    for (tone, drive, feedback) in [(-1.0, 0.0, 0.0), (1.0, 1.0, 1.0)] {
                         assert_finite(&render(
                             &input,
                             Controls {
@@ -85,6 +85,7 @@ fn stays_finite_at_extremes() {
                                 grain_size_ms,
                                 tone,
                                 drive,
+                                feedback,
                                 ..Controls::default()
                             },
                         ));
@@ -144,6 +145,7 @@ fn process_path_does_not_allocate() {
             scatter_ms: 250.0,
             density: 500.0,
             grain_size_ms: 50.0,
+            feedback: 1.0,
             ..Controls::default()
         };
         assert_no_alloc(|| {
@@ -336,4 +338,51 @@ fn bypass_fades_to_the_exact_input() {
     for (dry, out) in input[fade..].iter().zip(&output[fade..]) {
         assert_eq!([*dry; 2], *out);
     }
+}
+
+/// Full Feedback sustains the cloud without running away, and half still dies away to silence.
+#[test]
+fn feedback_extends_the_tail_and_stays_bounded() {
+    let input = noise_burst();
+    let tail_after = |feedback: f32, timbre_semitones: f32, scatter_ms: f32| {
+        let output = render(
+            &input,
+            Controls {
+                feedback,
+                timbre_semitones,
+                scatter_ms,
+                spread: 0.0,
+                ..Controls::default()
+            },
+        );
+        assert_finite(&output);
+        let peak = output.iter().flatten().fold(0f32, |m, s| m.max(s.abs()));
+        let tail = rms(output[60000..].iter().flatten().copied());
+        println!("feedback {feedback} timbre {timbre_semitones} scatter {scatter_ms}: peak {peak:.2} tail {tail:.4}");
+        assert!(peak < 4.0, "peak {peak}");
+        tail
+    };
+    let dry_tail = tail_after(0.0, 0.0, 50.0);
+    assert!(tail_after(1.0, 0.0, 50.0) > dry_tail + 0.05);
+    // Grains in phase (no timbre, no scatter) are the hottest loop
+    for timbre in [-12.0, 0.0, 12.0] {
+        tail_after(1.0, timbre, 0.0);
+        tail_after(1.0, timbre, 250.0);
+    }
+
+    let mut engine = Engine::new(FS);
+    let controls = Controls {
+        feedback: 0.5,
+        ..Controls::default()
+    };
+    for &x in &input {
+        engine.process([x, x], &controls);
+    }
+    // Slower to reach zero than without feedback, since the loop decays exponentially
+    let mut last = [1.0; 2];
+    for _ in 0..192000 {
+        last = engine.process([0.0; 2], &controls);
+        assert!(last.iter().all(|s| *s == 0.0 || s.is_normal()));
+    }
+    assert_eq!(last, [0.0; 2]);
 }

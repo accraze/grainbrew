@@ -32,6 +32,8 @@ pub struct GrainbrewParams {
     tone: FloatParam,
     #[id = "drive"]
     drive: FloatParam,
+    #[id = "feedback"]
+    feedback: FloatParam,
     #[id = "mix"]
     mix: FloatParam,
     #[id = "output"]
@@ -109,6 +111,8 @@ impl Default for GrainbrewParams {
             .with_smoother(SmoothingStyle::Linear(20.0))
             .with_value_to_string(formatters::v2s_f32_rounded(2)),
             drive: percent("Drive", defaults.drive).with_smoother(SmoothingStyle::Linear(20.0)),
+            feedback: percent("Feedback", defaults.feedback)
+                .with_smoother(SmoothingStyle::Linear(20.0)),
             mix: percent("Mix", defaults.mix).with_smoother(SmoothingStyle::Linear(20.0)),
             output: FloatParam::new(
                 "Output",
@@ -203,6 +207,7 @@ impl Plugin for Grainbrew {
                 grain_size_ms: p.grain_size.value(),
                 tone: p.tone.smoothed.next(),
                 drive: p.drive.smoothed.next(),
+                feedback: p.feedback.smoothed.next(),
                 mix: p.mix.smoothed.next(),
                 output_gain: p.output.smoothed.next(),
                 freeze: p.freeze.value(),
@@ -270,6 +275,7 @@ mod tests {
             &p.grain_size,
             &p.tone,
             &p.drive,
+            &p.feedback,
             &p.mix,
             &p.output,
         ] {

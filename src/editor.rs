@@ -10,7 +10,7 @@ use nih_plug_egui::egui::{
 use std::f32::consts::{PI, TAU};
 use std::sync::Arc;
 
-pub const WIDTH: u32 = 550;
+pub const WIDTH: u32 = 640;
 pub const HEIGHT: u32 = 270;
 
 const KNOB_RADIUS: f32 = 26.0;
@@ -31,6 +31,7 @@ pub fn create(params: Arc<GrainbrewParams>) -> Option<Box<dyn Editor>> {
                     &params.scatter,
                     &params.density,
                     &params.grain_size,
+                    &params.feedback,
                     &params.tone,
                     &params.drive,
                     &params.mix,
@@ -40,8 +41,8 @@ pub fn create(params: Arc<GrainbrewParams>) -> Option<Box<dyn Editor>> {
                 let width = ctx.screen_rect().width();
                 let cell = |i: usize| {
                     Pos2::new(
-                        width * ((i % 5) as f32 + 0.5) / 5.0,
-                        75.0 + 125.0 * (i / 5) as f32,
+                        width * ((i % 6) as f32 + 0.5) / 6.0,
+                        75.0 + 125.0 * (i / 6) as f32,
                     )
                 };
                 for (i, param) in knobs.iter().enumerate() {

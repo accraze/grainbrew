@@ -18,10 +18,15 @@ and the plugin reports 0 samples of latency.
 | Size    | 2–50 ms       | Grain length before resampling                                      |
 | Tone    | -1 to 1       | Tilt EQ on the grains around 1 kHz, ±6 dB                           |
 | Drive   | 0–100%        | Soft-clip saturation on the grains                                  |
+| Feedback| 0–100%        | Writes the cloud back into the input, so grains regrain themselves  |
 | Mix     | 0–100%        | Dry/wet                                                             |
 | Output  | -24 to +12 dB | Final level                                                         |
 | Freeze  | on / off      | Stops recording, so the cloud keeps playing what's held             |
 | Bypass  | on / off      | Click-free crossfade to the untouched input                         |
+
+Feedback goes in after Tone and Drive, so they shape every pass. Around the top third it sustains
+on its own, louder the further you turn it; a soft clip keeps it from running away. Freeze stops the
+loop from being written, so it has no effect while frozen.
 
 While frozen, the dry signal still follows Mix, so you can play over the held cloud. Longer Scatter
 gives grains more of the held audio to draw from.

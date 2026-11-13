@@ -20,6 +20,9 @@ const BYPASS_FADE_SECONDS: f32 = 0.01;
 const SCHEDULER_SEED: u32 = 0x4752_4149;
 /// Mean square of a Hann window. N out-of-phase grains sum in power to N * 3/8.
 const HANN_POWER: f32 = 0.375;
+/// Loop gain at full Feedback. Over 1 so the top of the knob sustains on most settings; how much
+/// the loop loses per pass depends on Timbre and Scatter.
+const MAX_FEEDBACK_GAIN: f32 = 1.5;
 
 #[derive(Clone, Copy)]
 pub struct Controls {
@@ -32,6 +35,8 @@ pub struct Controls {
     pub grain_size_ms: f32,
     pub tone: f32,
     pub drive: f32,
+    /// 0..1, how much of the shaped cloud is written back into the input buffer
+    pub feedback: f32,
     pub mix: f32,
     /// Linear
     pub output_gain: f32,
@@ -51,6 +56,7 @@ impl Default for Controls {
             grain_size_ms: 40.0,
             tone: 0.0,
             drive: 0.0,
+            feedback: 0.0,
             mix: 1.0,
             output_gain: 1.0,
             freeze: false,
@@ -79,6 +85,8 @@ pub struct Engine {
     scheduler: Scheduler,
     grains: GrainPool,
     post: [Post; 2],
+    /// Last sample's soft-clipped feedback, written into the ring with the next input
+    feedback: [f32; 2],
     /// 1 when the effect is fully in, 0 when bypassed
     engaged: f32,
 }
@@ -96,6 +104,7 @@ impl Engine {
                 tilt: Tilt::new(sample_rate),
                 saturator: Saturator::default(),
             }; 2],
+            feedback: [0.0; 2],
             engaged: 1.0,
         }
     }
@@ -111,14 +120,22 @@ impl Engine {
             tilt: Tilt::new(sample_rate),
             saturator: Saturator::default(),
         }; 2];
+        self.feedback = [0.0; 2];
     }
 
     pub fn process(&mut self, input: [f32; 2], c: &Controls) -> [f32; 2] {
         // A NaN from the host would otherwise stick in the filters for good
         let dry = input.map(|x| if x.is_finite() { flush(x) } else { 0.0 });
 
-        for ((ring, pre), x) in self.rings.iter_mut().zip(&mut self.pre).zip(dry) {
-            let filtered = pre.process(x);
+        // Through the highpass, so DC can't build up in the loop
+        for (((ring, pre), x), fb) in self
+            .rings
+            .iter_mut()
+            .zip(&mut self.pre)
+            .zip(dry)
+            .zip(self.feedback)
+        {
+            let filtered = pre.process(x + fb);
             if !c.freeze {
                 ring.push(filtered);
             }
@@ -160,6 +177,9 @@ impl Engine {
             post.tilt.set_tone(c.tone);
             post.saturator.set_drive(c.drive);
             let shaped = post.process(wet[ch]);
+            // The post saturator already bounds `shaped`, so the loop can't run away. tanh lowers
+            // the level it settles at when it sustains.
+            self.feedback[ch] = flush((shaped * c.feedback * MAX_FEEDBACK_GAIN).tanh());
             let processed = (dry[ch] + (shaped - dry[ch]) * c.mix) * c.output_gain;
             out[ch] = flush(dry[ch] + (processed - dry[ch]) * self.engaged);
         }

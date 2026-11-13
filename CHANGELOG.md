@@ -6,6 +6,11 @@ All notable changes to Grainbrew are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Feedback: writes the shaped cloud back into the input buffer for long washes and, at the top of
+  the knob, a self-sustaining cloud.
+- The window is wider to fit a sixth column of knobs.
+
 ## [0.1.0] - 2026-11-09
 
 ### Added
